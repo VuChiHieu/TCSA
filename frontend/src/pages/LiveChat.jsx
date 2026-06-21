@@ -15,12 +15,18 @@ const FAKE_MESSAGES = [
   'Đẹp thật sự, sẽ quay lại mua thêm',
 ]
 
-const maskText = (text) => {
-  const badWords = ['ngu', 'tệ', 'tức', 'gian lận', 'thằng', 'chết']
+// Tu dien tu nhay cam, CHI dung de xac dinh VI TRI can che trong cau,
+// khong dung de quyet dinh cau co toxic hay khong (viec do hoan toan do mo hinh AI dam nhiem).
+// Ly do can co tu dien nay: mo hinh phan loai o cap do CAU (sentence-level),
+// khong co kha nang chi ra TU nao cu the la vi pham (token-level),
+// nen can ho tro them de tranh che toan bo cau khi chi co 1-2 tu thuc su nhay cam.
+const SENSITIVE_WORDS = ['ngu', 'tệ', 'thằng', 'gian lận', 'óc']
+
+const maskToxicText = (text) => {
   let masked = text
-  badWords.forEach(word => {
+  SENSITIVE_WORDS.forEach(word => {
     const regex = new RegExp(word, 'gi')
-    masked = masked.replace(regex, '*'.repeat(word.length))
+    masked = masked.replace(regex, match => '*'.repeat(match.length))
   })
   return masked
 }
@@ -37,17 +43,20 @@ export default function LiveChat() {
     const text = FAKE_MESSAGES[Math.floor(Math.random() * FAKE_MESSAGES.length)]
     try {
       const data = await predictFull(text)
-      const isToxic = data.toxic.label !== 'CLEAN' || data.sentiment.label === 'NEG'
-      const displayText = isToxic ? maskText(text) : text
+      // AI quyet dinh CO toxic hay khong (OFFENSIVE / HATE)
+      const isToxic = data.toxic.label === 'OFFENSIVE' || data.toxic.label === 'HATE'
+      // Neu toxic, dung tu dien de che DUNG VI TRI tu nhay cam, khong che ca cau
+      const displayText = isToxic ? maskToxicText(text) : text
       setMessages(prev => [...prev.slice(-60), {
         user, text: displayText, toxic: isToxic,
+        toxicLabel: data.toxic.label,
         sentiment: data.sentiment.label,
         time: new Date().toLocaleTimeString('vi-VN')
       }])
       setStats(prev => ({ total: prev.total + 1, blocked: prev.blocked + (isToxic ? 1 : 0) }))
     } catch {
       setMessages(prev => [...prev.slice(-60), {
-        user, text, toxic: false, sentiment: 'NEG',
+        user, text, toxic: false, toxicLabel: 'CLEAN', sentiment: 'NEG',
         time: new Date().toLocaleTimeString('vi-VN')
       }])
     }
@@ -75,7 +84,8 @@ export default function LiveChat() {
         <h2 style={{ margin: '0 0 8px', color: '#1a1a2e', fontSize: 22 }}>Kiểm duyệt trò chuyện trực tiếp</h2>
         <p style={{ margin: 0, color: '#666', fontSize: 14 }}>
           Mô phỏng luồng chat tốc độ cao như YouTube hoặc TikTok Live. Hệ thống tự động
-          che từ ngữ vi phạm bằng ký tự đặc biệt mà không làm gián đoạn trải nghiệm.
+          che từ ngữ vi phạm (Xúc phạm / Thù ghét) dựa trên kết quả phân loại của mô hình AI,
+          mà không làm gián đoạn trải nghiệm.
         </p>
       </div>
 

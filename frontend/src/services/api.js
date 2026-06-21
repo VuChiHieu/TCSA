@@ -16,3 +16,8 @@ export const predictToxic = async (text, model = 'nb') => {
   const res = await axios.post(`${BASE_URL}/predict/toxic`, { text, model })
   return res.data
 }
+
+export const extractKeywords = async (texts, topN = 5) => {
+  const res = await axios.post(`${BASE_URL}/analyze/keywords`, { texts, top_n: topN })
+  return res.data
+}

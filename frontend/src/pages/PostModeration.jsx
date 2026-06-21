@@ -61,6 +61,9 @@ export default function PostModeration() {
           placeholder="Nhập nội dung bài viết của bạn tại đây..."
           value={text}
           onChange={e => setText(e.target.value)}
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck="false"
         />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
           <span style={{ fontSize: 13, color: '#aaa' }}>{text.length} ký tự</span>

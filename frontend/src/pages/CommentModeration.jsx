@@ -16,27 +16,49 @@ export default function CommentModeration() {
   const [newText, setNewText] = useState('')
   const [scanning, setScanning] = useState(false)
 
-  const analyzeComment = async (index, list = comments) => {
-    const updated = [...list]
-    updated[index].loading = true
-    setComments([...updated])
+  // Phan tich 1 binh luan, tra ve object da cap nhat (khong setState ben trong de tranh xung dot khi goi song song)
+  const fetchResultFor = async (comment) => {
     try {
-      const data = await predictFull(updated[index].text)
-      updated[index].result = data
-      updated[index].hidden = data.toxic.label !== 'CLEAN'
-      updated[index].loading = false
-      setComments([...updated])
+      const data = await predictFull(comment.text)
+      return {
+        ...comment,
+        result: data,
+        hidden: data.toxic.label !== 'CLEAN',
+        loading: false
+      }
     } catch {
-      updated[index].loading = false
-      setComments([...updated])
+      return { ...comment, loading: false }
     }
   }
 
+  const analyzeComment = async (index) => {
+    setComments(prev => {
+      const updated = [...prev]
+      updated[index] = { ...updated[index], loading: true }
+      return updated
+    })
+
+    const updatedComment = await fetchResultFor(comments[index])
+
+    setComments(prev => {
+      const updated = [...prev]
+      updated[index] = updatedComment
+      return updated
+    })
+  }
+
+  // Quet tat ca binh luan CUNG LUC bang Promise.all, thay vi await tuan tu tung cai
+  // Giam thoi gian cho tu O(n) lan goi noi tiep xuong gan O(1) lan goi (chay song song)
   const analyzeAll = async () => {
     setScanning(true)
-    for (let i = 0; i < comments.length; i++) {
-      await analyzeComment(i)
-    }
+
+    setComments(prev => prev.map(c => ({ ...c, loading: true })))
+
+    const results = await Promise.all(
+      comments.map(c => fetchResultFor(c))
+    )
+
+    setComments(results)
     setScanning(false)
   }
 
@@ -46,7 +68,13 @@ export default function CommentModeration() {
     const updated = [...comments, newComment]
     setComments(updated)
     setNewText('')
-    await analyzeComment(updated.length - 1, updated)
+
+    const finalComment = await fetchResultFor(newComment)
+    setComments(prev => {
+      const copy = [...prev]
+      copy[copy.length - 1] = finalComment
+      return copy
+    })
   }
 
   const sentimentColor = (s) => s === 'POS' ? '#38a169' : s === 'NEG' ? '#e94560' : '#e2a500'
@@ -108,7 +136,11 @@ export default function CommentModeration() {
               }}>
                 Bình luận đã bị ẩn do vi phạm tiêu chuẩn cộng đồng
                 <button
-                  onClick={() => { const u = [...comments]; u[i].hidden = false; setComments(u) }}
+                  onClick={() => setComments(prev => {
+                    const u = [...prev]
+                    u[i] = { ...u[i], hidden: false }
+                    return u
+                  })}
                   style={{ marginLeft: 12, fontSize: 12, color: '#0f3460', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
                 >
                   Xem nội dung
@@ -144,6 +176,9 @@ export default function CommentModeration() {
           value={newText}
           onChange={e => setNewText(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && addComment()}
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck="false"
         />
         <button
           onClick={addComment}

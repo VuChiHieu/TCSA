@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import {
-  PieChart, Pie, Cell, Tooltip, Legend,
+  PieChart, Pie, Cell, Tooltip,
   LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, BarChart, Bar
 } from 'recharts'
-import { predictFull } from '../services/api'
+import { predictFull, extractKeywords } from '../services/api'
 
 const SAMPLE_TEXTS = [
   'Sản phẩm đẹp lắm, giao hàng nhanh',
@@ -18,6 +18,12 @@ const SAMPLE_TEXTS = [
   'Mua lần 2 rồi, vẫn rất ổn',
   'Shop tư vấn nhiệt tình, cảm ơn',
   'Màu sắc đẹp, đóng gói cẩn thận',
+  'Giao hàng chậm quá, chờ mãi không thấy',
+  'Hàng lỗi, chất lượng kém không như mô tả',
+  'Thất vọng, đóng gói cẩu thả, hàng bị vỡ',
+  'Đồ ngu bán hàng kiểu gì mà chậm thế',
+  'Chất lượng tệ, không đáng tiền',
+  'Giao hàng chậm, đóng gói cẩu thả, thất vọng quá',
 ]
 
 const COLORS = {
@@ -25,17 +31,10 @@ const COLORS = {
   CLEAN: '#38a169', OFFENSIVE: '#e94560', HATE: '#9b2335'
 }
 
-const TOP_KEYWORDS = [
-  { word: 'lỗi', count: 28 },
-  { word: 'chậm', count: 22 },
-  { word: 'kém', count: 19 },
-  { word: 'tệ', count: 15 },
-  { word: 'thất vọng', count: 12 },
-]
-
 export default function Dashboard() {
   const [sentimentData, setSentimentData] = useState([])
   const [toxicData, setToxicData]         = useState([])
+  const [topKeywords, setTopKeywords]     = useState([])
   const [lineData]                         = useState([
     { time: '08:00', violations: 2 },
     { time: '10:00', violations: 5 },
@@ -51,19 +50,30 @@ export default function Dashboard() {
 
   const runAnalysis = async () => {
     setLoading(true)
-    const results = []
-    for (const text of SAMPLE_TEXTS) {
-      try {
-        const data = await predictFull(text)
-        results.push(data)
-      } catch {}
-    }
+
+    // Goi API phan tich sentiment/toxic song song cho tat ca cau mau
+    const results = await Promise.all(
+      SAMPLE_TEXTS.map(async (text) => {
+        try {
+          const data = await predictFull(text)
+          return { text, data }
+        } catch {
+          return null
+        }
+      })
+    )
+    const validResults = results.filter(Boolean)
 
     const sentCount = { POS: 0, NEG: 0, NEUTRAL: 0 }
     const toxCount  = { CLEAN: 0, OFFENSIVE: 0, HATE: 0 }
-    results.forEach(r => {
-      sentCount[r.sentiment.label] = (sentCount[r.sentiment.label] || 0) + 1
-      toxCount[r.toxic.label]      = (toxCount[r.toxic.label] || 0) + 1
+    const negativeTexts = []
+
+    validResults.forEach(({ text, data }) => {
+      sentCount[data.sentiment.label] = (sentCount[data.sentiment.label] || 0) + 1
+      toxCount[data.toxic.label]      = (toxCount[data.toxic.label] || 0) + 1
+      if (data.sentiment.label === 'NEG' || data.toxic.label !== 'CLEAN') {
+        negativeTexts.push(text)
+      }
     })
 
     setSentimentData([
@@ -76,8 +86,18 @@ export default function Dashboard() {
       { name: 'Xúc phạm', value: toxCount.OFFENSIVE },
       { name: 'Thù ghét', value: toxCount.HATE },
     ])
+
+    // Goi backend tach tu khoa bang underthesea, thay vi tu tach bang JS
+    // (tranh loi cat cut tu ghep nhu "chat luong" -> "luong")
+    try {
+      const keywordData = await extractKeywords(negativeTexts, 5)
+      setTopKeywords(keywordData.keywords)
+    } catch {
+      setTopKeywords([])
+    }
+
     setSummary({
-      total: results.length,
+      total: validResults.length,
       pos: sentCount.POS,
       neg: sentCount.NEG,
       toxic: toxCount.OFFENSIVE + toxCount.HATE
@@ -85,7 +105,10 @@ export default function Dashboard() {
     setLoading(false)
   }
 
-  useEffect(() => { runAnalysis() }, [])
+  useEffect(() => {
+    runAnalysis()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+  }, [])
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
@@ -150,16 +173,23 @@ export default function Dashboard() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 10, padding: '20px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 24 }}>
-        <h4 style={{ margin: '0 0 16px', color: '#2d3748' }}>Top từ khóa tiêu cực</h4>
-        <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={TOP_KEYWORDS} layout="vertical">
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis type="number" tick={{ fontSize: 12 }} />
-            <YAxis dataKey="word" type="category" tick={{ fontSize: 13 }} width={80} />
-            <Tooltip />
-            <Bar dataKey="count" fill="#e94560" radius={[0, 6, 6, 0]} name="Số lần xuất hiện" />
-          </BarChart>
-        </ResponsiveContainer>
+        <h4 style={{ margin: '0 0 4px', color: '#2d3748' }}>Top từ khóa tiêu cực</h4>
+        <p style={{ margin: '0 0 16px', fontSize: 12, color: '#a0aec0' }}>
+          Tách từ bằng underthesea (NLP tiếng Việt) từ các câu được mô hình AI gán nhãn Tiêu cực hoặc Vi phạm
+        </p>
+        {topKeywords.length === 0 ? (
+          <p style={{ color: '#a0aec0', fontSize: 13 }}>Chưa có dữ liệu, bấm "Làm mới dữ liệu" để phân tích.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={topKeywords} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
+              <YAxis dataKey="word" type="category" tick={{ fontSize: 13 }} width={90} />
+              <Tooltip />
+              <Bar dataKey="count" fill="#e94560" radius={[0, 6, 6, 0]} name="Số lần xuất hiện" />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       <div style={{ textAlign: 'right' }}>

@@ -1,9 +1,26 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
+from pydantic import BaseModel, field_validator
+from underthesea import word_tokenize
 import joblib
 import re
 import os
+import asyncio
+import logging
+
+# ================================================
+# CAU HINH GIOI HAN (theo Non-functional Requirements)
+# ================================================
+
+MAX_TEXT_LENGTH = 5000        # 1 cau / 1 binh luan toi da 5000 ky tu
+MAX_BATCH_SIZE = 200          # toi da 200 cau trong 1 lan goi batch
+MAX_KEYWORD_TEXTS = 500       # toi da 500 cau khi trich xuat tu khoa
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("tcsa")
 
 # ================================================
 # KHOI TAO APP
@@ -17,6 +34,33 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Bat tat ca loi validate dau vao (vi du thieu field, sai kieu du lieu)
+# tra ve thong bao ro rang bang tieng Viet thay vi loi mac dinh kho hieu cua FastAPI,
+# dong thoi dam bao server khong crash khi nhan request sai format.
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    logger.warning(f"Du lieu dau vao khong hop le: {exc.errors()}")
+    # Dung jsonable_encoder de chuyen doi an toan, vi exc.errors() co the chua
+    # object ValueError trong truong 'ctx' ma json.dumps khong tu serialize duoc
+    safe_errors = jsonable_encoder(exc.errors(), exclude={"ctx"})
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "Du lieu dau vao khong hop le",
+            "detail": safe_errors
+        }
+    )
+
+# Bat tat ca loi khong luong truoc duoc (vi du Unicode la, encoding loi)
+# de server tra ve thong bao loi co kiem soat thay vi crash hoan toan.
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logger.error(f"Loi khong xac dinh: {repr(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Da xay ra loi khi xu ly yeu cau. Vui long thu lai."}
+    )
 
 # ================================================
 # LOAD MO HINH
@@ -38,23 +82,126 @@ print("Load mo hinh thanh cong!")
 def clean_text(text: str) -> str:
     if not isinstance(text, str):
         return ""
-    text = text.lower()
-    text = re.sub(r'http\S+|www\S+', '', text)
-    text = re.sub(r'[^\w\sàáâãèéêìíòóôõùúýăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]', ' ', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
+    try:
+        text = text.lower()
+        text = re.sub(r'http\S+|www\S+', '', text)
+        text = re.sub(r'[^\w\sàáâãèéêìíòóôõùúýăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]', ' ', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
+    except Exception as e:
+        # Phong truong hop ky tu Unicode la gay loi regex, khong de crash toan server
+        logger.warning(f"Loi khi lam sach van ban: {repr(e)}")
+        return ""
+
+STOP_WORDS = {
+    'và', 'là', 'của', 'có', 'không', 'rất', 'này', 'cho', 'với', 'được',
+    'mà', 'thì', 'lại', 'còn', 'một', 'những', 'các', 'đã', 'sẽ', 'vẫn',
+    'như', 'mô tả', 'thôi', 'gì', 'ra', 'vào', 'lên', 'xuống', 'quá',
+    'nên', 'cũng', 'để', 'tôi', 'bạn', 'mình', 'shop', 'sản phẩm', 'hàng',
+    'ạ', 'nhé', 'à', 'ơi', 'vậy', 'thế', 'đi', 'nha'
+}
+
+def extract_keywords_from_texts(texts: list[str], top_n: int = 5) -> list[dict]:
+    counter = {}
+    for text in texts:
+        cleaned = clean_text(text)
+        if not cleaned:
+            continue
+        try:
+            tokens = word_tokenize(cleaned)
+        except Exception as e:
+            logger.warning(f"Loi tach tu underthesea: {repr(e)}")
+            continue
+        for token in tokens:
+            word = token.replace('_', ' ').strip()
+            if len(word) < 2 or word in STOP_WORDS:
+                continue
+            counter[word] = counter.get(word, 0) + 1
+
+    sorted_words = sorted(counter.items(), key=lambda x: x[1], reverse=True)
+    return [{"word": w, "count": c} for w, c in sorted_words[:top_n]]
 
 # ================================================
-# REQUEST / RESPONSE SCHEMAS
+# REQUEST / RESPONSE SCHEMAS (co validation)
 # ================================================
 
 class TextInput(BaseModel):
     text: str
-    model: str = "nb"  # "nb" hoac "mlp"
+    model: str = "nb"
+
+    @field_validator('text')
+    @classmethod
+    def text_khong_duoc_rong(cls, v):
+        if v is None or v.strip() == "":
+            raise ValueError("Noi dung van ban khong duoc de trong")
+        if len(v) > MAX_TEXT_LENGTH:
+            raise ValueError(f"Van ban vuot qua do dai cho phep ({MAX_TEXT_LENGTH} ky tu)")
+        return v
+
+    @field_validator('model')
+    @classmethod
+    def model_phai_hop_le(cls, v):
+        if v not in ("nb", "mlp"):
+            raise ValueError("model phai la 'nb' hoac 'mlp'")
+        return v
 
 class BatchInput(BaseModel):
     texts: list[str]
     model: str = "nb"
+
+    @field_validator('texts')
+    @classmethod
+    def texts_phai_hop_le(cls, v):
+        if not v or len(v) == 0:
+            raise ValueError("Danh sach van ban khong duoc de rong")
+        if len(v) > MAX_BATCH_SIZE:
+            raise ValueError(f"So luong cau vuot qua gioi han ({MAX_BATCH_SIZE} cau/lan)")
+        for t in v:
+            if len(t) > MAX_TEXT_LENGTH:
+                raise ValueError(f"Mot cau trong danh sach vuot qua do dai cho phep ({MAX_TEXT_LENGTH} ky tu)")
+        return v
+
+    @field_validator('model')
+    @classmethod
+    def model_phai_hop_le(cls, v):
+        if v not in ("nb", "mlp"):
+            raise ValueError("model phai la 'nb' hoac 'mlp'")
+        return v
+
+class KeywordInput(BaseModel):
+    texts: list[str]
+    top_n: int = 5
+
+    @field_validator('texts')
+    @classmethod
+    def texts_phai_hop_le(cls, v):
+        if len(v) > MAX_KEYWORD_TEXTS:
+            raise ValueError(f"So luong cau vuot qua gioi han ({MAX_KEYWORD_TEXTS} cau/lan)")
+        return v
+
+    @field_validator('top_n')
+    @classmethod
+    def top_n_phai_hop_le(cls, v):
+        if v < 1 or v > 50:
+            raise ValueError("top_n phai trong khoang 1 den 50")
+        return v
+
+# ================================================
+# HAM XU LY 1 CAU
+# ================================================
+
+def analyze_one(text: str, model: str) -> dict:
+    cleaned = clean_text(text)
+    if not cleaned:
+        return {"text": text, "toxic": "CLEAN", "sentiment": "NEUTRAL"}
+
+    model_toxic = nb_toxic if model == "nb" else mlp_toxic
+    model_sent  = nb_sentiment if model == "nb" else mlp_sentiment
+
+    toxic_label = model_toxic.predict([cleaned])[0]
+    sent_label  = model_sent.predict([cleaned])[0]
+
+    return {"text": text, "toxic": toxic_label, "sentiment": sent_label}
 
 # ================================================
 # ENDPOINTS
@@ -69,12 +216,12 @@ def predict_toxic(data: TextInput):
     cleaned = clean_text(data.text)
     if not cleaned:
         return {"label": "CLEAN", "confidence": 1.0}
-    
+
     model = nb_toxic if data.model == "nb" else mlp_toxic
     label = model.predict([cleaned])[0]
     proba = model.predict_proba([cleaned])[0]
     confidence = round(float(max(proba)), 4)
-    
+
     return {
         "original_text": data.text,
         "cleaned_text": cleaned,
@@ -88,12 +235,12 @@ def predict_sentiment(data: TextInput):
     cleaned = clean_text(data.text)
     if not cleaned:
         return {"label": "NEUTRAL", "confidence": 1.0}
-    
+
     model = nb_sentiment if data.model == "nb" else mlp_sentiment
     label = model.predict([cleaned])[0]
     proba = model.predict_proba([cleaned])[0]
     confidence = round(float(max(proba)), 4)
-    
+
     return {
         "original_text": data.text,
         "cleaned_text": cleaned,
@@ -110,16 +257,16 @@ def predict_full(data: TextInput):
             "toxic": {"label": "CLEAN", "confidence": 1.0},
             "sentiment": {"label": "NEUTRAL", "confidence": 1.0}
         }
-    
+
     model_toxic = nb_toxic if data.model == "nb" else mlp_toxic
     model_sent  = nb_sentiment if data.model == "nb" else mlp_sentiment
-    
+
     toxic_label = model_toxic.predict([cleaned])[0]
     toxic_proba = round(float(max(model_toxic.predict_proba([cleaned])[0])), 4)
-    
+
     sent_label  = model_sent.predict([cleaned])[0]
     sent_proba  = round(float(max(model_sent.predict_proba([cleaned])[0])), 4)
-    
+
     return {
         "original_text": data.text,
         "toxic": {
@@ -134,28 +281,17 @@ def predict_full(data: TextInput):
     }
 
 @app.post("/predict/batch")
-def predict_batch(data: BatchInput):
-    results = []
-    model_toxic = nb_toxic if data.model == "nb" else mlp_toxic
-    model_sent  = nb_sentiment if data.model == "nb" else mlp_sentiment
-    
-    for text in data.texts:
-        cleaned = clean_text(text)
-        if not cleaned:
-            results.append({
-                "text": text,
-                "toxic": "CLEAN",
-                "sentiment": "NEUTRAL"
-            })
-            continue
-        
-        toxic_label = model_toxic.predict([cleaned])[0]
-        sent_label  = model_sent.predict([cleaned])[0]
-        
-        results.append({
-            "text": text,
-            "toxic": toxic_label,
-            "sentiment": sent_label
-        })
-    
+async def predict_batch(data: BatchInput):
+    loop = asyncio.get_event_loop()
+    tasks = [
+        loop.run_in_executor(None, analyze_one, text, data.model)
+        for text in data.texts
+    ]
+    results = await asyncio.gather(*tasks)
+
     return {"results": results, "total": len(results)}
+
+@app.post("/analyze/keywords")
+def analyze_keywords(data: KeywordInput):
+    keywords = extract_keywords_from_texts(data.texts, data.top_n)
+    return {"keywords": keywords, "total_texts_analyzed": len(data.texts)}
