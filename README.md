@@ -78,23 +78,33 @@ Sau khi kích hoạt, dòng lệnh sẽ có chữ `(venv)` ở đầu.
 pip install -r requirements.txt
 ```
 
-### Bước 4.3 — Mô hình AI
+### Bước 4.3 — Huấn luyện mô hình AI (BẮT BUỘC, chỉ cần làm 1 lần)
 
-Các file mô hình đã huấn luyện sẵn (`.pkl`) đã có trong thư mục `ai_core/models/`, đẩy kèm theo repo. Bạn **không cần** chạy lại huấn luyện để dùng được hệ thống.
+Các file mô hình (`.pkl`) **không được đẩy lên Git** vì vượt quá giới hạn dung lượng của GitHub (file `mlp_*.pkl` nặng hơn 100MB). Vì vậy sau khi clone, thư mục `ai_core/models/` sẽ rỗng, và bạn **phải tự huấn luyện lại** trước khi chạy backend, nếu không backend sẽ báo lỗi không tìm thấy file `.pkl`.
 
-Nếu muốn huấn luyện lại từ đầu (ví dụ sau khi chỉnh dữ liệu hoặc thuật toán), chạy:
+Dữ liệu thô dùng để huấn luyện đã có sẵn trong repo, không cần tải thêm:
+- `ai_core/data/vihsd/vihsd-main/data/vihsd/` (train.csv, dev.csv, test.csv) — dữ liệu toxic, nguồn UIT-ViHSD: https://github.com/sonlam1102/vihsd
+- `ai_core/data/sentiment/data - data.csv` — dữ liệu sentiment, gốc từ Kaggle: https://www.kaggle.com/datasets/linhlpv/vietnamese-sentiment-analyst
+
+Chạy lệnh sau (đang ở thư mục gốc `TCSA/`, đã kích hoạt venv):
 
 ```
 python ai_core/train_models_v2.py
 ```
 
-Quá trình này mất khoảng 10-15 phút và sẽ ghi đè 4 file `.pkl` trong `ai_core/models/`.
+Quá trình này mất khoảng 10-15 phút (MLP cần nhiều vòng lặp để huấn luyện). Khi chạy xong, script sẽ tự tạo 4 file vào đúng thư mục `ai_core/models/`:
 
-Dữ liệu thô dùng để huấn luyện nằm sẵn tại:
-- `ai_core/data/vihsd/vihsd-main/data/vihsd/` (train.csv, dev.csv, test.csv) — dữ liệu toxic, nguồn UIT-ViHSD: https://github.com/sonlam1102/vihsd
-- `ai_core/data/sentiment/data - data.csv` — dữ liệu sentiment, tải từ Kaggle: https://www.kaggle.com/datasets/linhlpv/vietnamese-sentiment-analyst
+```
+ai_core/models/
+  nb_toxic.pkl
+  mlp_toxic.pkl
+  nb_sentiment.pkl
+  mlp_sentiment.pkl
+```
 
-Nếu dữ liệu bị thiếu (do .gitignore hoặc lỗi tải), tải lại theo 2 link trên và đặt đúng đường dẫn như trên.
+Chỉ cần chạy bước này **một lần duy nhất** sau khi clone. Những lần chạy backend sau đó không cần huấn luyện lại, vì backend sẽ tự load 4 file đã có sẵn trong thư mục.
+
+Nếu file dữ liệu `.csv` bị thiếu vì lý do nào đó, tải lại theo 2 link nguồn trên và đặt đúng đường dẫn như cấu trúc ở trên.
 
 ### Bước 4.4 — Chạy Backend server
 
@@ -142,6 +152,8 @@ Giao diện gồm 4 tab: Kiểm duyệt bài đăng, Kiểm duyệt bình luận
 ---
 
 ## 6. Tóm tắt thứ tự chạy mỗi lần mở máy
+
+**Lưu ý:** lần đầu tiên sau khi clone, phải chạy `python ai_core/train_models_v2.py` trước (xem Bước 4.3), nếu không backend sẽ lỗi vì chưa có file model.
 
 ```
 # Terminal 1 — Backend
