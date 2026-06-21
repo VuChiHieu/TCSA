@@ -1,0 +1,208 @@
+# TCSA — Hệ thống Trợ lý Lọc nội dung độc hại và Phân tích cảm xúc thời gian thực
+
+Dự án môn Trí tuệ Nhân tạo. Hệ thống sử dụng Machine Learning (Naive Bayes, MLP) để phát hiện nội dung độc hại và phân tích cảm xúc văn bản tiếng Việt theo thời gian thực, kèm theo bộ giao diện mô phỏng kiểm duyệt (Post, Comment, Live Chat) và Dashboard thống kê.
+
+---
+
+## 1. Cấu trúc dự án
+
+```
+TCSA/
+  ai_core/
+    data/
+      vihsd/         -> dữ liệu huấn luyện toxic detection
+      sentiment/      -> dữ liệu huấn luyện sentiment analysis
+    models/           -> các file mô hình .pkl đã huấn luyện sẵn
+    train_models_v2.py  -> script huấn luyện mô hình (bản mới nhất, dùng bản này)
+    train_models.py     -> script huấn luyện bản đầu (tham khảo)
+    check_data.py        -> script kiểm tra dữ liệu
+  backend/
+    main.py            -> FastAPI server, expose API cho mô hình AI
+  frontend/
+    src/
+      pages/            -> 4 trang chính (Post, Comment, LiveChat, Dashboard)
+      services/api.js    -> gọi API tới backend
+      App.jsx
+  requirements.txt
+  .gitignore
+  README.md
+```
+
+---
+
+## 2. Yêu cầu hệ thống
+
+- Python 3.13 (khuyến nghị dùng đúng bản này để tránh lỗi tương thích thư viện)
+- Node.js bản LTS (khuyến nghị 18 trở lên)
+- Git
+- Hệ điều hành: Windows, macOS hoặc Linux đều chạy được (hướng dẫn dưới đây dùng lệnh Windows, các lệnh tương đương trên macOS/Linux có ghi chú riêng)
+
+---
+
+## 3. Clone dự án
+
+```
+git clone https://github.com/VuChiHieu/TCSA.git
+cd TCSA
+```
+
+---
+
+## 4. Cài đặt Backend (Python + AI Core)
+
+### Bước 4.1 — Tạo môi trường ảo
+
+Tại thư mục gốc `TCSA/`:
+
+```
+python -m venv venv
+```
+
+Kích hoạt môi trường ảo:
+
+Windows (PowerShell):
+```
+venv\Scripts\Activate.ps1
+```
+
+macOS / Linux:
+```
+source venv/bin/activate
+```
+
+Sau khi kích hoạt, dòng lệnh sẽ có chữ `(venv)` ở đầu.
+
+### Bước 4.2 — Cài thư viện
+
+```
+pip install -r requirements.txt
+```
+
+### Bước 4.3 — Mô hình AI
+
+Các file mô hình đã huấn luyện sẵn (`.pkl`) đã có trong thư mục `ai_core/models/`, đẩy kèm theo repo. Bạn **không cần** chạy lại huấn luyện để dùng được hệ thống.
+
+Nếu muốn huấn luyện lại từ đầu (ví dụ sau khi chỉnh dữ liệu hoặc thuật toán), chạy:
+
+```
+python ai_core/train_models_v2.py
+```
+
+Quá trình này mất khoảng 10-15 phút và sẽ ghi đè 4 file `.pkl` trong `ai_core/models/`.
+
+Dữ liệu thô dùng để huấn luyện nằm sẵn tại:
+- `ai_core/data/vihsd/vihsd-main/data/vihsd/` (train.csv, dev.csv, test.csv) — dữ liệu toxic, nguồn UIT-ViHSD: https://github.com/sonlam1102/vihsd
+- `ai_core/data/sentiment/data - data.csv` — dữ liệu sentiment, tải từ Kaggle: https://www.kaggle.com/datasets/linhlpv/vietnamese-sentiment-analyst
+
+Nếu dữ liệu bị thiếu (do .gitignore hoặc lỗi tải), tải lại theo 2 link trên và đặt đúng đường dẫn như trên.
+
+### Bước 4.4 — Chạy Backend server
+
+```
+cd backend
+uvicorn main:app --reload --port 8000
+```
+
+Server chạy thành công khi thấy dòng:
+
+```
+INFO:     Uvicorn running on http://127.0.0.1:8000
+```
+
+Kiểm tra API hoạt động bằng cách mở trình duyệt vào:
+
+```
+http://127.0.0.1:8000/docs
+```
+
+Đây là giao diện Swagger, cho phép test toàn bộ API trực tiếp trên trình duyệt.
+
+**Lưu ý:** giữ terminal này luôn chạy trong suốt quá trình sử dụng frontend. Mở terminal mới cho các bước tiếp theo.
+
+---
+
+## 5. Cài đặt Frontend (ReactJS)
+
+Mở terminal mới (không tắt terminal backend), tại thư mục gốc `TCSA/`:
+
+```
+cd frontend
+npm install
+npm run dev
+```
+
+Sau khi chạy, mở trình duyệt vào:
+
+```
+http://localhost:5173
+```
+
+Giao diện gồm 4 tab: Kiểm duyệt bài đăng, Kiểm duyệt bình luận, Trò chuyện trực tiếp, Bảng điều khiển.
+
+---
+
+## 6. Tóm tắt thứ tự chạy mỗi lần mở máy
+
+```
+# Terminal 1 — Backend
+cd TCSA
+venv\Scripts\Activate.ps1
+cd backend
+uvicorn main:app --reload --port 8000
+
+# Terminal 2 — Frontend
+cd TCSA\frontend
+npm run dev
+```
+
+Sau đó vào `http://localhost:5173` để sử dụng.
+
+---
+
+## 7. Công nghệ sử dụng
+
+| Thành phần | Công nghệ |
+|---|---|
+| Backend API | Python, FastAPI, Uvicorn |
+| AI / Machine Learning | Scikit-learn (Naive Bayes, MLP Classifier) |
+| Xử lý ngôn ngữ | Regex tiền xử lý tiếng Việt |
+| Frontend | ReactJS (Vite) |
+| Trực quan hóa dữ liệu | Recharts |
+| Giao tiếp API | Axios |
+
+---
+
+## 8. Kết quả mô hình (tham khảo)
+
+| Mô hình | Tác vụ | Accuracy |
+|---|---|---|
+| Naive Bayes | Toxic Detection | ~84.6% |
+| MLP | Toxic Detection | ~84.0% |
+| Naive Bayes | Sentiment Analysis | ~91.6% |
+| MLP | Sentiment Analysis | ~96.0% |
+
+Chi tiết classification report (precision, recall, F1-score) xem trong output của `train_models_v2.py` hoặc trong báo cáo dự án.
+
+**Hạn chế đã ghi nhận:** mô hình dựa trên TF-IDF, không xử lý tốt các câu phủ định ("không tệ") hoặc mỉa mai (sarcasm), do thiếu khả năng hiểu ngữ cảnh sâu. Hướng cải thiện trong tương lai: sử dụng mô hình ngữ cảnh sâu hơn như PhoBERT.
+
+---
+
+## 9. Xử lý lỗi thường gặp
+
+**Lỗi `ModuleNotFoundError: No module named 'fastapi'`**
+→ Chưa kích hoạt môi trường ảo trong terminal hiện tại. Chạy `venv\Scripts\Activate.ps1` trước.
+
+**Lỗi `Could not import module "main"`**
+→ Đang chạy uvicorn ở sai thư mục. Phải `cd backend` trước khi chạy `uvicorn main:app`.
+
+**Lỗi kết nối API trên frontend (`Loi ket noi API`)**
+→ Backend chưa chạy hoặc đã tắt. Kiểm tra lại terminal backend còn dòng `Uvicorn running` không.
+
+**Cảnh báo `ConvergenceWarning` khi huấn luyện MLP**
+→ Không phải lỗi nghiêm trọng, chỉ là mô hình cần thêm vòng lặp để hội tụ tối ưu hơn. Không ảnh hưởng đến việc sử dụng mô hình đã lưu.
+
+---
+
+## 10. Nhóm thực hiện
+
+Dự án môn Trí tuệ Nhân tạo — TCSA Team.

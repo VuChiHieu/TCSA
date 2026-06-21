@@ -1,0 +1,26 @@
+# ===== Python =====
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+*.egg-info/
+
+# ===== Node / React =====
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ===== IDE =====
+.vscode/
+.idea/
+
+# ===== OS junk =====
+.DS_Store
+Thumbs.db
+__MACOSX/
+
+# ===== Logs =====
+*.log
+
+ai_core/models/*.pkl
