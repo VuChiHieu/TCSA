@@ -35,14 +35,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Bat tat ca loi validate dau vao (vi du thieu field, sai kieu du lieu)
-# tra ve thong bao ro rang bang tieng Viet thay vi loi mac dinh kho hieu cua FastAPI,
-# dong thoi dam bao server khong crash khi nhan request sai format.
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
     logger.warning(f"Du lieu dau vao khong hop le: {exc.errors()}")
-    # Dung jsonable_encoder de chuyen doi an toan, vi exc.errors() co the chua
-    # object ValueError trong truong 'ctx' ma json.dumps khong tu serialize duoc
     safe_errors = jsonable_encoder(exc.errors(), exclude={"ctx"})
     return JSONResponse(
         status_code=422,
@@ -52,8 +47,6 @@ async def validation_exception_handler(request, exc):
         }
     )
 
-# Bat tat ca loi khong luong truoc duoc (vi du Unicode la, encoding loi)
-# de server tra ve thong bao loi co kiem soat thay vi crash hoan toan.
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     logger.error(f"Loi khong xac dinh: {repr(exc)}")
@@ -66,9 +59,21 @@ async def global_exception_handler(request, exc):
 # LOAD MO HINH
 # ================================================
 
-MODEL_DIR = r"D:\TriTueNhanTao\Hieuha\TCSA\ai_core\models"
+# Dung duong dan tuong doi tinh tu vi tri file main.py nay,
+# dam bao chay dung tren moi may sau khi clone, khong phu thuoc vao
+# cau truc thu muc cu the cua tung nguoi dung.
+#
+# __file__  = .../TCSA/backend/main.py
+# parent    = .../TCSA/backend/
+# parent^2  = .../TCSA/
+# MODEL_DIR = .../TCSA/ai_core/models/
+BASE_DIR  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL_DIR = os.path.join(BASE_DIR, "ai_core", "models")
 
+print(f"Thu muc goc du an : {BASE_DIR}")
+print(f"Thu muc mo hinh   : {MODEL_DIR}")
 print("Dang load mo hinh...")
+
 nb_toxic     = joblib.load(os.path.join(MODEL_DIR, "nb_toxic.pkl"))
 mlp_toxic    = joblib.load(os.path.join(MODEL_DIR, "mlp_toxic.pkl"))
 nb_sentiment = joblib.load(os.path.join(MODEL_DIR, "nb_sentiment.pkl"))
@@ -89,7 +94,6 @@ def clean_text(text: str) -> str:
         text = re.sub(r'\s+', ' ', text).strip()
         return text
     except Exception as e:
-        # Phong truong hop ky tu Unicode la gay loi regex, khong de crash toan server
         logger.warning(f"Loi khi lam sach van ban: {repr(e)}")
         return ""
 
@@ -288,7 +292,6 @@ async def predict_batch(data: BatchInput):
         for text in data.texts
     ]
     results = await asyncio.gather(*tasks)
-
     return {"results": results, "total": len(results)}
 
 @app.post("/analyze/keywords")

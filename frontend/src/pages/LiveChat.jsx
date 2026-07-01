@@ -3,6 +3,7 @@ import { predictFull } from '../services/api'
 
 const FAKE_USERS = ['Minh', 'Lan', 'Tuấn', 'Hương', 'Đức', 'Mai', 'Long', 'Hoa', 'Nam', 'Linh']
 const FAKE_MESSAGES = [
+  // Câu rõ ràng (giữ nguyên)
   'Sản phẩm này đẹp quá!',
   'Bao nhiêu tiền vậy bạn ơi?',
   'Đồ ngu bán hàng gì mà tệ thế',
@@ -13,13 +14,25 @@ const FAKE_MESSAGES = [
   'Giá hợp lý, chất lượng ổn',
   'Thằng bán hàng này gian lận',
   'Đẹp thật sự, sẽ quay lại mua thêm',
+
+  // Câu mỉa mai nhẹ — khen nhưng thực ra chê
+  'Ồ tuyệt vời thật, đặt 2 tuần mới tới nơi',
+  'Hàng y hệt ảnh, nếu ảnh chụp từ năm ngoái',
+  'Giao hàng nhanh thiệt, nhanh hơn cả việc hàng bị vỡ',
+  'Đóng gói cẩn thận lắm, băng keo dán có 1 miếng',
+
+  // Câu dùng từ lóng / teencode khó nhận biết
+  'Hàng nhận được vl luôn, màu sắc đẹp cực',
+  'Shop này oke phết, mua lần 2 rồi vẫn chất',
+  'Đặt hàng mà chờ dài cổ ra, bực không chịu được',
+  'Hàng không giống ảnh tí nào, coi như học phí',
+
+  // Câu trung lập khó phân loại
+  'Sản phẩm tạm được, không như kỳ vọng lắm',
+  'Thôi kệ, tiền nào của nấy cũng đúng',
 ]
 
-// Tu dien tu nhay cam, CHI dung de xac dinh VI TRI can che trong cau,
-// khong dung de quyet dinh cau co toxic hay khong (viec do hoan toan do mo hinh AI dam nhiem).
-// Ly do can co tu dien nay: mo hinh phan loai o cap do CAU (sentence-level),
-// khong co kha nang chi ra TU nao cu the la vi pham (token-level),
-// nen can ho tro them de tranh che toan bo cau khi chi co 1-2 tu thuc su nhay cam.
+
 const SENSITIVE_WORDS = ['ngu', 'tệ', 'thằng', 'gian lận', 'óc']
 
 const maskToxicText = (text) => {
