@@ -11,6 +11,19 @@ from sklearn.metrics import classification_report, accuracy_score
 from sklearn.pipeline import Pipeline
 from sklearn.utils import resample
 
+BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR   = os.path.join(BASE_DIR, "ai_core", "data")
+MODEL_DIR  = os.path.join(BASE_DIR, "ai_core", "models")
+
+VIHSD_TRAIN = os.path.join(DATA_DIR, "vihsd", "vihsd-main", "data", "vihsd", "train.csv")
+VIHSD_TEST  = os.path.join(DATA_DIR, "vihsd", "vihsd-main", "data", "vihsd", "test.csv")
+VIHSD_DEV   = os.path.join(DATA_DIR, "vihsd", "vihsd-main", "data", "vihsd", "dev.csv")
+SENTIMENT   = os.path.join(DATA_DIR, "sentiment", "data - data.csv")
+
+print(f"Thu muc goc du an : {BASE_DIR}")
+print(f"Thu muc du lieu   : {DATA_DIR}")
+print(f"Thu muc mo hinh   : {MODEL_DIR}")
+
 # ================================================
 # 1. TIEN XU LY VAN BAN
 # ================================================
@@ -28,13 +41,12 @@ def clean_text(text):
 # 2. LOAD DU LIEU TOXIC
 # ================================================
 
-print("Dang xu ly du lieu Toxic...")
+print("\nDang xu ly du lieu Toxic...")
 
-df_train = pd.read_csv(r"D:\TriTueNhanTao\Hieuha\TCSA\ai_core\data\vihsd\vihsd-main\data\vihsd\train.csv")
-df_test  = pd.read_csv(r"D:\TriTueNhanTao\Hieuha\TCSA\ai_core\data\vihsd\vihsd-main\data\vihsd\test.csv")
-df_dev   = pd.read_csv(r"D:\TriTueNhanTao\Hieuha\TCSA\ai_core\data\vihsd\vihsd-main\data\vihsd\dev.csv")
+df_train = pd.read_csv(VIHSD_TRAIN)
+df_test  = pd.read_csv(VIHSD_TEST)
+df_dev   = pd.read_csv(VIHSD_DEV)
 
-# Gop train + dev de co nhieu du lieu hon
 df_toxic = pd.concat([df_train, df_dev], ignore_index=True)
 df_toxic = df_toxic[['free_text', 'label_id']].dropna()
 df_toxic['free_text'] = df_toxic['free_text'].apply(clean_text)
@@ -43,7 +55,6 @@ df_toxic = df_toxic[df_toxic['free_text'].str.len() > 2]
 label_map = {0: 'CLEAN', 1: 'OFFENSIVE', 2: 'HATE'}
 df_toxic['label'] = df_toxic['label_id'].map(label_map)
 
-# Can bang du lieu bang oversampling
 df_clean     = df_toxic[df_toxic['label'] == 'CLEAN']
 df_offensive = df_toxic[df_toxic['label'] == 'OFFENSIVE']
 df_hate      = df_toxic[df_toxic['label'] == 'HATE']
@@ -62,7 +73,6 @@ X_train_t, X_test_t, y_train_t, y_test_t = train_test_split(
     test_size=0.2, random_state=42, stratify=df_toxic_balanced['label']
 )
 
-# Du lieu test that (khong oversample)
 df_test_real = df_test[['free_text', 'label_id']].dropna()
 df_test_real['free_text'] = df_test_real['free_text'].apply(clean_text)
 df_test_real['label'] = df_test_real['label_id'].map(label_map)
@@ -74,13 +84,12 @@ df_test_real = df_test_real[df_test_real['free_text'].str.len() > 2]
 
 print("Dang xu ly du lieu Sentiment...")
 
-df_sent = pd.read_csv(r"D:\TriTueNhanTao\Hieuha\TCSA\ai_core\data\sentiment\data - data.csv")
+df_sent = pd.read_csv(SENTIMENT)
 df_sent = df_sent[['comment', 'label']].dropna()
 df_sent['comment'] = df_sent['comment'].apply(clean_text)
 df_sent = df_sent[df_sent['label'].isin(['POS', 'NEG'])]
 df_sent = df_sent[df_sent['comment'].str.len() > 2]
 
-# Can bang sentiment
 df_pos = df_sent[df_sent['label'] == 'POS']
 df_neg = df_sent[df_sent['label'] == 'NEG']
 df_neg_up = resample(df_neg, replace=True, n_samples=len(df_pos), random_state=42)
@@ -99,7 +108,6 @@ X_train_s, X_test_s, y_train_s, y_test_s = train_test_split(
 
 print("\n--- Huan luyen mo hinh Toxic ---")
 
-# Naive Bayes
 print("Naive Bayes Toxic...")
 pipe_nb_toxic = Pipeline([
     ('tfidf', TfidfVectorizer(max_features=15000, ngram_range=(1, 3), sublinear_tf=True)),
@@ -111,7 +119,6 @@ print("Naive Bayes Toxic (test that):")
 print(f"Accuracy: {round(accuracy_score(df_test_real['label'], y_pred), 4)}")
 print(classification_report(df_test_real['label'], y_pred))
 
-# MLP
 print("MLP Toxic (mat 5-10 phut)...")
 pipe_mlp_toxic = Pipeline([
     ('tfidf', TfidfVectorizer(max_features=15000, ngram_range=(1, 2), sublinear_tf=True)),
@@ -134,7 +141,6 @@ print(classification_report(df_test_real['label'], y_pred))
 
 print("\n--- Huan luyen mo hinh Sentiment ---")
 
-# Naive Bayes
 print("Naive Bayes Sentiment...")
 pipe_nb_sent = Pipeline([
     ('tfidf', TfidfVectorizer(max_features=15000, ngram_range=(1, 3), sublinear_tf=True)),
@@ -145,7 +151,6 @@ y_pred = pipe_nb_sent.predict(X_test_s)
 print(f"Accuracy: {round(accuracy_score(y_test_s, y_pred), 4)}")
 print(classification_report(y_test_s, y_pred))
 
-# MLP
 print("MLP Sentiment...")
 pipe_mlp_sent = Pipeline([
     ('tfidf', TfidfVectorizer(max_features=15000, ngram_range=(1, 2), sublinear_tf=True)),
@@ -166,12 +171,12 @@ print(classification_report(y_test_s, y_pred))
 # ================================================
 
 print("\nDang luu mo hinh v2...")
-os.makedirs(r"D:\TriTueNhanTao\Hieuha\TCSA\ai_core\models", exist_ok=True)
+os.makedirs(MODEL_DIR, exist_ok=True)
 
-joblib.dump(pipe_nb_toxic,  r"D:\TriTueNhanTao\Hieuha\TCSA\ai_core\models\nb_toxic.pkl")
-joblib.dump(pipe_mlp_toxic, r"D:\TriTueNhanTao\Hieuha\TCSA\ai_core\models\mlp_toxic.pkl")
-joblib.dump(pipe_nb_sent,   r"D:\TriTueNhanTao\Hieuha\TCSA\ai_core\models\nb_sentiment.pkl")
-joblib.dump(pipe_mlp_sent,  r"D:\TriTueNhanTao\Hieuha\TCSA\ai_core\models\mlp_sentiment.pkl")
+joblib.dump(pipe_nb_toxic,  os.path.join(MODEL_DIR, "nb_toxic.pkl"))
+joblib.dump(pipe_mlp_toxic, os.path.join(MODEL_DIR, "mlp_toxic.pkl"))
+joblib.dump(pipe_nb_sent,   os.path.join(MODEL_DIR, "nb_sentiment.pkl"))
+joblib.dump(pipe_mlp_sent,  os.path.join(MODEL_DIR, "mlp_sentiment.pkl"))
 
 print("Da luu xong 4 mo hinh v2!")
-print("Hoan tat cai thien mo hinh!")
+print("Hoan tat huan luyen mo hinh!")
